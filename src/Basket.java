@@ -1,6 +1,10 @@
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
+
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
 
@@ -12,8 +16,13 @@ public class Basket {
     private int productCount;
     private String input;
     private String[] parts;
-    Scanner scanner = new Scanner(System.in);
-    File basket = new File("basket.txt");
+    private Scanner scanner = new Scanner(System.in);
+    private File basket = new File("basket.txt");
+    private File basketJSON = new File("basket.json");
+    private File csvFile = new File("log.csv");
+    private JSONObject jsonObject = new JSONObject();
+    private JSONParser jsonParser = new JSONParser();
+    private ClientLog clientLog = new ClientLog();
 
 
     public Basket(int[] prices, String[] products) {
@@ -22,11 +31,9 @@ public class Basket {
         this.amount = new int[products.length];
     }
     public void addToCart(){
-        if (basket.exists()){
+        if (basketJSON.exists()){
             System.out.println("Корзина уже существует");
-//            loadFromTxtFile(basket);
-            printCart();
-            setAmount(loadFromTxtFile(basket).getAmount());
+           loadJSON(basketJSON);
             printCart();
         } else {
             System.out.println("Новая корзина");
@@ -36,12 +43,14 @@ public class Basket {
             setInput(scanner.nextLine());
 
             if (getInput().equals("end")) {
-                saveTxt(basket);
+                saveJSON(basketJSON);
                 break;
             }
         setParts(input.split(" "));
         setProductNum(Integer.parseInt(parts[0]));
         setProductCount(Integer.parseInt(parts[1]));
+        clientLog.log(getProductNum(), getProductCount());
+        clientLog.exportAsCSV(csvFile);
         amount[productNum - 1] += productCount;
         System.out.println("Вы добавили в корзину: " + products[productNum - 1] + " " + productCount + " шт.\n");
         }
@@ -72,54 +81,34 @@ public class Basket {
         }
         return listBasket;
     }
-
-    public void saveTxt(File textFile){
-        try (BufferedOutputStream outputStream = new BufferedOutputStream(new FileOutputStream(textFile, false))){
-            outputStream.write(listBasket().toString().getBytes());
-            outputStream.flush();
-            outputStream.close();
+    public void saveJSON(File file){
+        JSONArray amount = new JSONArray();
+        for (int count : getAmount()){
+            amount.add(count);
+        }
+        jsonObject.put("amount", amount);
+        try (FileWriter fileWriter = new FileWriter(file)){
+            fileWriter.write(String.valueOf(jsonObject));
+            fileWriter.flush();
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
-    public static Basket loadFromTxtFile(File textFile){
-        try (InputStreamReader inputStream = new InputStreamReader(new FileInputStream(textFile))) {
-            int byteCod = 0;
-            StringBuilder stringBuilder = new StringBuilder();
-            while ((byteCod = inputStream.read()) != -1){
-                stringBuilder.append(Character.toString(byteCod));
+    public void loadJSON(File file){
+        try {
+            Object obj = jsonParser.parse(new FileReader(file));
+            JSONObject amountParsedJson = (JSONObject) obj;
+            JSONArray amountJSON = (JSONArray)amountParsedJson.get("amount");
+            List<Integer> list = new ArrayList<>();
+            for (Object o : amountJSON){
+                list.add(((Number)o).intValue());
             }
-
-            Products_Prices productsPrices = new Products_Prices();
-            String[] products = productsPrices.getProducts();
-            int[] prices = productsPrices.getPrices();
-            int[] amount = new int[products.length];
-            Basket backUpBasket = new Basket(prices,products);
-
-            String [] parts;
-            String [] partsBasket;
-            parts = stringBuilder.toString().split("\n");
-//            System.out.println(Arrays.toString(parts));
-            int i = 0;
-            int i1 = 0;
-            while (i < parts.length){
-                partsBasket = parts[i].split(" ");
-//                System.out.println(Arrays.toString(partsBasket));
-                i1 = 0;
-                while (i1 < products.length){
-//                    System.out.println(products[i1] + " " + partsBasket[0] + " " + partsBasket[1]);
-                    if (products[i1].equals(partsBasket[0])){
-                        amount[i1] += Integer.parseInt(partsBasket[1]);
-                    }
-                    i1++;
-                }
-                i++;
-            }
-            backUpBasket.setAmount(amount);
-            return backUpBasket;
+            setAmount(list.stream().mapToInt(i -> i).toArray());
         } catch (FileNotFoundException e) {
             throw new RuntimeException(e);
         } catch (IOException e) {
+            throw new RuntimeException(e);
+        } catch (ParseException e) {
             throw new RuntimeException(e);
         }
     }
@@ -147,11 +136,15 @@ public class Basket {
     public void setProductNum(int productNum) {
         this.productNum = productNum;
     }
-
+    public int getProductNum() {
+        return productNum;
+    }
     public void setProductCount(int productCount) {
         this.productCount = productCount;
     }
-
+    public int getProductCount() {
+        return productCount;
+    }
     public void setInput(String input) {
         this.input = input;
     }
